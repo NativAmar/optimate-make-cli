@@ -8,6 +8,7 @@ user-invocable: true
 
 You can fetch, edit, validate, and push Make.com scenario blueprints using the `make-fixer` CLI. You can also design new scenarios from scratch through collaborative brainstorming.
 
+
 ## Bundled Reference Files — Load On Demand
 
 This skill includes sub-files with deep reference material. **Read them when needed:**
@@ -46,13 +47,13 @@ Full setup steps (including how to get a Make.com API token) are in the plugin's
 
 The API token is stored globally at `~/.make-fixer/.env` and works from any directory.
 
-To configure, run: `make-fixer login --token <YOUR_TOKEN>`
+The employee configures authentication in their own terminal using the reviewed secure login procedure; the agent must not receive the token.
 
-**IMPORTANT:** Always use `--token <token>` flag. Do NOT run bare `make-fixer login` — the interactive prompt does not work inside Claude Code.
+Credential entry belongs in the employee-controlled login flow. Do not work around an interactive prompt by passing a real token through an AI-managed command.
 
-Optionally set a custom base URL: `make-fixer login --token <token> --base-url https://us1.make.com` (default: `https://eu1.make.com`). Running login again updates the existing token.
+If a custom Make zone is needed, the employee selects it in the external login flow. Never pass a real token in an AI-managed command or log.
 
-If a command fails with "MAKE_API_TOKEN not found", ask the user for their token and run `make-fixer login --token <token>`.
+If authentication is missing, never request or receive the token in chat or an AI-managed terminal. Ask the employee to complete the secure login flow in their own terminal, then verify with a read-only authentication check. Never print token values.
 
 ## CLI Reference
 
@@ -181,7 +182,7 @@ Present a brief summary to the user:
 
 After analyzing a scenario, always look for and suggest improvements — even if the user didn't ask. Present these as observations, not demands:
 
-- **Cost optimization**: Modules that could be consolidated, redundant steps, logic that could be combined into fewer modules. Every module costs operations.
+- **Cost optimization**: Modules that could be consolidated, redundant steps, logic that could be combined into fewer modules. Credit use depends on which modules execute and how many bundles they process.
 - **Missing error handlers**: Modules making external API calls without `onerror` handlers
 - **Fragile patterns**: Hardcoded values that should use variables, missing `ifempty` fallbacks on fields that could be null
 - **Naming**: Modules with default names that don't describe what they do
@@ -382,7 +383,7 @@ The blueprint's `metadata.scenario` object controls execution behavior:
 The only module types you can use from memory are the **builtin** and **utility** modules — these are stable platform primitives:
 
 **Flow control (`builtin:*`):**
-- `builtin:BasicRouter` — router, splits into parallel routes (has `routes` array, `mapper` is always `null`)
+- `builtin:BasicRouter` — router, processes matching routes sequentially in their configured order (has `routes` array, `mapper` is always `null`)
 - `builtin:BasicFeeder` — iterator, splits arrays into individual bundles. Mapper: `{"array": "{{...}}"}`
 - `builtin:BasicAggregator` — array aggregator, merges bundles back. Mapper: `{}`, Parameters: `{"feeder": <iterator-module-id>}`
 - `builtin:BasicRepeater` — repeater, runs N times. Mapper: `{"start": "1", "repeats": "5", "step": "1"}`
@@ -519,7 +520,7 @@ For the **complete function catalog** (70+ functions with signatures, parameters
 
 **Special values:** `true`, `false`, `null`, `emptystring` (forces truly empty output — not `""`, not `null`), `newline` (literal line break — useful in `replace(text; newline; "<br />")`)
 
-## If-else & Merge (Open Beta)
+## If-else & Merge — verify current target capability
 
 The **If-else** module (`builtin:BasicIfElse`) and **Merge** module (`builtin:BasicMerge`) are a new pair for conditional routing where only one branch executes and routes can be reconnected.
 
@@ -529,9 +530,13 @@ The **If-else** module (`builtin:BasicIfElse`) and **Merge** module (`builtin:Ba
 |---|---|---|
 | **Execution** | Runs **only the first matching** condition | Runs **all matching** routes |
 | **Merge back** | Routes can be merged with `builtin:BasicMerge` | Routes **cannot** be reconnected |
-| **Cost** | Uses operations but **no credits** (free) | Uses operations and credits |
-| **Nesting** | Cannot nest Router or another If-else inside | Can nest freely |
-| **Use when** | Exactly one path should run based on conditions | Multiple paths may need to run in parallel |
+| **Cost** | Uses operations but **no credits** (free) | Router itself uses no credits; downstream modules may use credits |
+| **Nesting** | Current official docs describe nested If-else/Merge with one Merge per level, while retaining older restrictions elsewhere; verify the target feature/version and exported blueprint before editing | Can nest freely |
+| **Use when** | Exactly one path should run based on conditions | Multiple paths may need to run, sequentially in their configured order |
+
+Official sources: https://help.make.com/router and https://www.make.com/pricing.
+
+Current documentation: https://help.make.com/if-else-and-merge. Its nested-flow section describes an inner If-else with its own Merge. Do not apply an unconditional historical no-nesting rule, and do not assume the existing account/export uses the same capabilities without checking.
 
 ### If-else blueprint structure
 
@@ -717,8 +722,8 @@ Inside `{{...}}`, use single quotes to avoid JSON escaping issues:
 
 ## Cost Optimization Principles
 
-- **Every module run costs operations and credits.** Always build scenarios with the minimum number of modules needed.
-- **Free modules (operations but no credits):** `builtin:BasicIfElse`, `builtin:BasicMerge`, `scenario-service:NameExecution` ("Name a Run"). Use these freely.
+- Credit cost depends on the actual module and processed bundles. Routers and error handlers do not consume credits themselves; downstream modules may. Minimize unnecessary executed work rather than assuming a charge for every module.
+- **Free modules (operations but no credits):** `builtin:BasicRouter`, `builtin:BasicIfElse`, `builtin:BasicMerge`, error handlers, `scenario-service:NameExecution` ("Name a Run"). Use these freely.
 - Consolidate logic where possible. Prefer fewer modules doing more over many modules doing little.
 - When proposing approaches, always include the operation cost comparison (e.g. "Approach A: 5 modules per run, Approach B: 3 modules per run").
 - Actively question every module: is this strictly necessary? Can it be combined with another step?
